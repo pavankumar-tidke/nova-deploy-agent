@@ -10,6 +10,7 @@ from executor import CommandExecutor
 from log_sync import LogSync, start_log_sync_background
 from logger import setup_logger, trim_local_logs_max_age_hours
 from command_poll import run_command_poll_loop
+from container_sync import run_container_sync_loop
 from system_monitor import SystemMonitor
 from terminal_session import terminal_poll_loop
 from version import AGENT_VERSION
@@ -107,10 +108,13 @@ async def run() -> int:
     command_poll_task = asyncio.create_task(
         run_command_poll_loop(logger, load_cfg_fresh, stop_event, interval_sec=4.0),
     )
+    container_sync_task = asyncio.create_task(
+        run_container_sync_loop(logger, load_cfg_fresh, stop_event, interval_sec=12.0),
+    )
     stop_task = asyncio.create_task(stop_event.wait())
 
     done, pending = await asyncio.wait(
-        [client_task, stop_task, command_poll_task],
+        [client_task, stop_task, command_poll_task, container_sync_task],
         return_when=asyncio.FIRST_COMPLETED,
     )
 
@@ -128,6 +132,9 @@ async def run() -> int:
     if not command_poll_task.done():
         command_poll_task.cancel()
         await asyncio.gather(command_poll_task, return_exceptions=True)
+    if not container_sync_task.done():
+        container_sync_task.cancel()
+        await asyncio.gather(container_sync_task, return_exceptions=True)
     await asyncio.gather(client_task, return_exceptions=True)
     return 0
 

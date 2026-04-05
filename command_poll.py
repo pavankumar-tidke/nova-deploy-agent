@@ -8,6 +8,7 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from command_executor import ALLOWED_DOCKER, handle_docker_command
 from http_client import NodeHttpClient
 from intent_store import read_intent, write_intent
 
@@ -79,6 +80,9 @@ def _handle_one_as_agent(
                 "pid": os.getpid(),
                 "intent": read_intent(),
             }
+        elif ctype in ALLOWED_DOCKER:
+            handle_docker_command(logger, http, cfg, cmd)
+            return
         else:
             ok = False
             detail = f"unknown_command:{ctype}"
