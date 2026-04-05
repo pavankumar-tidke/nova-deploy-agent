@@ -1,0 +1,7 @@
+{
+  "backendUrl": "https://api.example.com",
+  "token": "your-node-token",
+  "nodeId": "my-server-01",
+  "logRetentionHours": 5,
+  "apiPrefix": ""
+}

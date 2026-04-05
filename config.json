@@ -1,0 +1,7 @@
+{
+  "backendUrl": "http://127.0.0.1:9001",
+  "token": "replace-with-token-from-backend",
+  "nodeId": "",
+  "logRetentionHours": 5,
+  "apiPrefix": ""
+}
