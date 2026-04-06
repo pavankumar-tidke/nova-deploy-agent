@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from docker_cli import check_docker_cli, resolve_docker_executable
+from docker_cli import check_docker_cli, resolve_docker_executable, sanitize_docker_config_for_headless
 from http_client import NodeHttpClient
 
 
@@ -219,6 +219,7 @@ def _run_stream(
 
 
 def _require_docker(logger: logging.Logger) -> str:
+    sanitize_docker_config_for_headless(logger)
     ok, err = check_docker_cli()
     if not ok:
         raise RuntimeError(err or "Docker is not installed or not accessible on this node")
