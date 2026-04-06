@@ -1,0 +1,46 @@
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+
+# Caches
+.cache/
+
+# Logs
+*.log
+
+# Local secrets (agent reads config from ~/.nodehost by default; env overrides path)
+.env
+.env.*
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
