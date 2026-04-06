@@ -11,6 +11,9 @@ from log_sync import LogSync, start_log_sync_background
 from logger import setup_logger, trim_local_logs_max_age_hours
 from command_poll import run_command_poll_loop
 from container_sync import run_container_sync_loop
+from deployment_job_poll import run_deployment_job_loop
+from docker_heartbeat_loop import run_docker_heartbeat_loop
+from metrics_push_loop import run_metrics_push_loop
 from system_monitor import SystemMonitor
 from terminal_session import terminal_poll_loop
 from version import AGENT_VERSION
@@ -111,10 +114,27 @@ async def run() -> int:
     container_sync_task = asyncio.create_task(
         run_container_sync_loop(logger, load_cfg_fresh, stop_event, interval_sec=12.0),
     )
+    deployment_job_task = asyncio.create_task(
+        run_deployment_job_loop(logger, load_cfg_fresh, stop_event, interval_sec=6.0),
+    )
+    metrics_push_task = asyncio.create_task(
+        run_metrics_push_loop(logger, load_cfg_fresh, stop_event, interval_sec=2.0),
+    )
+    docker_hb_task = asyncio.create_task(
+        run_docker_heartbeat_loop(logger, load_cfg_fresh, stop_event, interval_sec=10.0),
+    )
     stop_task = asyncio.create_task(stop_event.wait())
 
     done, pending = await asyncio.wait(
-        [client_task, stop_task, command_poll_task, container_sync_task],
+        [
+            client_task,
+            stop_task,
+            command_poll_task,
+            container_sync_task,
+            deployment_job_task,
+            metrics_push_task,
+            docker_hb_task,
+        ],
         return_when=asyncio.FIRST_COMPLETED,
     )
 
@@ -135,6 +155,15 @@ async def run() -> int:
     if not container_sync_task.done():
         container_sync_task.cancel()
         await asyncio.gather(container_sync_task, return_exceptions=True)
+    if not deployment_job_task.done():
+        deployment_job_task.cancel()
+        await asyncio.gather(deployment_job_task, return_exceptions=True)
+    if not metrics_push_task.done():
+        metrics_push_task.cancel()
+        await asyncio.gather(metrics_push_task, return_exceptions=True)
+    if not docker_hb_task.done():
+        docker_hb_task.cancel()
+        await asyncio.gather(docker_hb_task, return_exceptions=True)
     await asyncio.gather(client_task, return_exceptions=True)
     return 0
 
