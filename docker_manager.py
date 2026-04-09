@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +51,24 @@ def _cpu_percent(stats: dict[str, Any]) -> float:
         if system_delta <= 0 or cpu_delta < 0:
             return 0.0
         percpu = cpu_stats.get("cpu_usage", {}).get("percpu_usage") or []
+        cpus = len(percpu) if percpu else 1
+        return round((cpu_delta / system_delta) * cpus * 100.0, 2)
+    except (TypeError, ZeroDivisionError, KeyError):
+        return 0.0
+
+
+def _cpu_percent_between(prev: dict[str, Any], curr: dict[str, Any]) -> float:
+    """CPU % from two consecutive stats snapshots (Docker often reports 0% on a single read)."""
+    try:
+        p_cpu = prev.get("cpu_stats") or {}
+        c_cpu = curr.get("cpu_stats") or {}
+        cpu_delta = (c_cpu.get("cpu_usage") or {}).get("total_usage", 0) - (p_cpu.get("cpu_usage") or {}).get(
+            "total_usage", 0
+        )
+        system_delta = (c_cpu.get("system_cpu_usage", 0) or 0) - (p_cpu.get("system_cpu_usage", 0) or 0)
+        if system_delta <= 0 or cpu_delta < 0:
+            return 0.0
+        percpu = (c_cpu.get("cpu_usage") or {}).get("percpu_usage") or []
         cpus = len(percpu) if percpu else 1
         return round((cpu_delta / system_delta) * cpus * 100.0, 2)
     except (TypeError, ZeroDivisionError, KeyError):
@@ -145,17 +164,25 @@ class DockerManager:
                 started = state.get("StartedAt")
                 status = _status_from_attrs(attrs)
                 network_mode = (attrs.get("HostConfig") or {}).get("NetworkMode") or ""
+                host_cfg = attrs.get("HostConfig") or {}
+                docker_mem_cap = int(host_cfg.get("Memory") or 0)
 
                 cpu_usage = 0.0
                 mem_usage = 0
                 mem_limit = 0
                 if state.get("Running"):
                     try:
-                        stats = container.stats(decode=True, stream=False)
-                        cpu_usage = _cpu_percent(stats)
-                        mem_stats = stats.get("memory_stats") or {}
+                        stats1 = container.stats(decode=True, stream=False)
+                        time.sleep(0.18)
+                        stats2 = container.stats(decode=True, stream=False)
+                        cpu_usage = _cpu_percent_between(stats1, stats2)
+                        if cpu_usage == 0.0:
+                            cpu_usage = _cpu_percent(stats2)
+                        mem_stats = stats2.get("memory_stats") or {}
                         mem_usage = int(mem_stats.get("usage") or 0)
                         mem_limit = int(mem_stats.get("limit") or 0)
+                        if mem_limit == 0 and docker_mem_cap > 0:
+                            mem_limit = docker_mem_cap
                     except (APIError, DockerException, KeyError, TypeError) as exc:
                         self._logger.debug("stats for %s: %s", short_id, exc)
 
@@ -167,8 +194,8 @@ class DockerManager:
                         "image": image,
                         "status": status,
                         "cpu_usage": cpu_usage,
-                        "memory_usage": int(mem_usage / (1024 * 1024)) if mem_usage else 0,
-                        "memory_limit": int(mem_limit / (1024 * 1024)) if mem_limit else 0,
+                        "memory_usage": int(round(mem_usage / (1024 * 1024))) if mem_usage else 0,
+                        "memory_limit": int(round(mem_limit / (1024 * 1024))) if mem_limit else 0,
                         "ports": _ports_str(attrs),
                         "uptime": _uptime_from_started(started) if state.get("Running") else "—",
                         "created_at": created,
