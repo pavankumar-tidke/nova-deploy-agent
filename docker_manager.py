@@ -41,6 +41,7 @@ def _uptime_from_started(started: str | None) -> str:
 
 
 def _cpu_percent(stats: dict[str, Any]) -> float:
+    """CPU utilization 0–100 (fraction of total host CPUs, capped)."""
     try:
         cpu_stats = stats.get("cpu_stats") or {}
         precpu = stats.get("precpu_stats") or {}
@@ -50,15 +51,15 @@ def _cpu_percent(stats: dict[str, Any]) -> float:
         system_delta = cpu_stats.get("system_cpu_usage", 0) - precpu.get("system_cpu_usage", 0)
         if system_delta <= 0 or cpu_delta < 0:
             return 0.0
-        percpu = cpu_stats.get("cpu_usage", {}).get("percpu_usage") or []
-        cpus = len(percpu) if percpu else 1
-        return round((cpu_delta / system_delta) * cpus * 100.0, 2)
+        # (cpu_delta/system_delta)*100 is bounded ~0–100 for typical usage; avoid *ncpus which inflated to 1000%+.
+        pct = (float(cpu_delta) / float(system_delta)) * 100.0
+        return round(min(100.0, max(0.0, pct)), 2)
     except (TypeError, ZeroDivisionError, KeyError):
         return 0.0
 
 
 def _cpu_percent_between(prev: dict[str, Any], curr: dict[str, Any]) -> float:
-    """CPU % from two consecutive stats snapshots (Docker often reports 0% on a single read)."""
+    """CPU % (0–100) from two consecutive stats snapshots."""
     try:
         p_cpu = prev.get("cpu_stats") or {}
         c_cpu = curr.get("cpu_stats") or {}
@@ -68,9 +69,8 @@ def _cpu_percent_between(prev: dict[str, Any], curr: dict[str, Any]) -> float:
         system_delta = (c_cpu.get("system_cpu_usage", 0) or 0) - (p_cpu.get("system_cpu_usage", 0) or 0)
         if system_delta <= 0 or cpu_delta < 0:
             return 0.0
-        percpu = (c_cpu.get("cpu_usage") or {}).get("percpu_usage") or []
-        cpus = len(percpu) if percpu else 1
-        return round((cpu_delta / system_delta) * cpus * 100.0, 2)
+        pct = (float(cpu_delta) / float(system_delta)) * 100.0
+        return round(min(100.0, max(0.0, pct)), 2)
     except (TypeError, ZeroDivisionError, KeyError):
         return 0.0
 
@@ -162,6 +162,7 @@ class DockerManager:
                 image = attrs.get("Config", {}).get("Image") or ""
                 state = attrs.get("State") or {}
                 started = state.get("StartedAt")
+                restart_count = int(state.get("RestartCount") or 0)
                 status = _status_from_attrs(attrs)
                 network_mode = (attrs.get("HostConfig") or {}).get("NetworkMode") or ""
                 host_cfg = attrs.get("HostConfig") or {}
@@ -193,6 +194,7 @@ class DockerManager:
                         "name": name or short_id,
                         "image": image,
                         "status": status,
+                        "restart_count": restart_count,
                         "cpu_usage": cpu_usage,
                         "memory_usage": int(round(mem_usage / (1024 * 1024))) if mem_usage else 0,
                         "memory_limit": int(round(mem_limit / (1024 * 1024))) if mem_limit else 0,

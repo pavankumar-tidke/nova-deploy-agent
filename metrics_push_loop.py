@@ -76,6 +76,7 @@ def _build_payload(monitor: SystemMonitor, logger: logging.Logger) -> dict[str, 
             "containerId": cid,
             "cpu": max(0.0, min(100.0, cpu)),
             "memory": max(0.0, min(100.0, mem_pct)),
+            "restartCount": int(item.get("restart_count") or 0),
         }
         if dep_hint:
             row["deploymentId"] = dep_hint
@@ -100,7 +101,7 @@ async def run_metrics_push_loop(
     load_config_fn: Callable[[], Any],
     stop_event: asyncio.Event,
     *,
-    interval_sec: float = 2.0,
+    interval_sec: float = 1.0,
 ) -> None:
     http = NodeHttpClient(logger)
     monitor = SystemMonitor()
